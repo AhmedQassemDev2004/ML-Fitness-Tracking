@@ -68,14 +68,14 @@ df_merged = pd.concat([acc_df.iloc[:, :3], gyr_df], axis=1)
 df_merged.columns = [
     "acc_x",
     "acc_y",
-    "acc_z",  # Accelerometer axes
+    "acc_z",
     "gyr_x",
     "gyr_y",
-    "gyr_z",  # Gyroscope axes
+    "gyr_z",
+    "participant",
     "label",
     "category",
-    "participant",
-    "set",  # Metadata
+    "set",
 ]
 
 # Define which columns are numeric for aggregation
