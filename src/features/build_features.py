@@ -1,257 +1,283 @@
-#%%
+# %%
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from DataTransformation import LowPassFilter, PrincipalComponentAnalysis
 from TemporalAbstraction import NumericalAbstraction
 from FrequencyAbstraction import FourierTransformation
-from sklearn.cluster import KMeans
-from mpl_toolkits.mplot3d import Axes3D  # For 3D plotting
 
-# -----------------------------------------------------
-# Load Data
-# -----------------------------------------------------
-df = pd.read_pickle("../../data/interim/02_data_outliers_removed_chauvenet.pkl")
 
-# First 6 columns are predictors (acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z)
-predictor_cols = list(df.columns[:6])
+# --------------------------------------------------------------
+# Load data
+# --------------------------------------------------------------
 
-# -----------------------------------------------------
-# Plotting Settings
-# -----------------------------------------------------
+df = pd.read_pickle(r"../../data/interim/02_data_outliers_removed_chauvenet.pkl")
+
+sensor_col = list(df.columns[:6])
+
+
 plt.style.use("fivethirtyeight")
-plt.rcParams['figure.figsize'] = (20, 5)
-plt.rcParams['figure.dpi'] = 100
-plt.rcParams['lines.linewidth'] = 2
+plt.rcParams["figure.figsize"] = (20, 5)
+plt.rcParams["figure.dpi"] = 100
+plt.rcParams["lines.linewidth"] = 2
 
-# -----------------------------------------------------
-# Deal with Missing Values (Interpolation)
-# -----------------------------------------------------
-for col in predictor_cols:
-    df[col] = df[col].interpolate()  # Fill missing values by interpolating
+# --------------------------------------------------------------
+# Dealing with missing values (imputation)
+# --------------------------------------------------------------
+
+df.info()
+# Interpolation is a technique used in mathematics and statistics to estimate values between two known values. In the context of Pandas DataFrames, interpolation can be applied along rows or columns to estimate missing values based on neighboring data points.
+# df['acc_x'].interpolate().isna().sum()
+
+df[df["set"] == 30]["acc_x"].plot()
+
+for col in sensor_col:
+    df[col] = df[col].interpolate()
 
 df.info()
 
-# -----------------------------------------------------
-# Calculate Set Duration
-# -----------------------------------------------------
-# Quick visualization for sets 25 and 50
-df[df['set'] == 25]['acc_y'].plot()
-df[df['set'] == 50]['acc_y'].plot()
+df[df["set"] == 30]["acc_x"].plot()
 
-# Compute duration for each set
-for s in df['set'].unique():
-    start = df[df['set'] == s].index[0]
-    end = df[df['set'] == s].index[-1]
-    duration = end - start
-    df.loc[df['set'] == s, 'duration'] = duration
+# --------------------------------------------------------------
+# Calculating set duration
+# --------------------------------------------------------------
 
-# Average duration per category
-duration_df = df.groupby(['category'])['duration'].mean()
+# We know that: the heavy set contains 5 repetitions, and medium set contains 10 repetitions for each exercise
 
-# -----------------------------------------------------
-# Butterworth Low-Pass Filter
-# -----------------------------------------------------
+# Now we need to know the duration for each set
+
+for set in df["set"].unique():
+
+    strart = df[df["set"] == set].index[0]
+    end = df[df["set"] == set].index[-1]
+
+    duration = end - strart
+
+    df.loc[(df["set"] == set), "duration"] = duration.seconds
+
+
+duration_df = df.groupby("category")["duration"].mean()
+
+duration_df[0] / 5  # so each repetition take 2.9 sec in heavy set
+duration_df[1] / 10  # so each repetition take 2.4 sec in medium set
+
+
+# --------------------------------------------------------------
+# Butterworth lowpass filter
+# --------------------------------------------------------------
 df_lowpass = df.copy()
+
 LowPass = LowPassFilter()
 
-fs = 1000 / 200  # Sampling frequency (step size = 200ms → 5 Hz)
-cutoff = 1.3     # Cutoff frequency; higher = less smoothing
+sampling_frq = (
+    1000 / 200
+)  # # because we are taking the record every 200 ms, so that line calculates number of repetition in 1 sec
 
-# Example filter on 'acc_y'
-df_lowpass = LowPass.low_pass_filter(df_lowpass, 'acc_y', fs, cutoff, order=5, phase_shift=True)
+cutoff_frq = 1.3  # the low cutoff frequency, meaning more smoothing in signal
 
-subset = df_lowpass[df_lowpass['set'] == 45]
+LowPass.low_pass_filter(df_lowpass, "acc_y", sampling_frq, cutoff_frq)
+
+subset = df_lowpass[df_lowpass["set"] == 45]
+print(subset["label"][0])
+
 fig, ax = plt.subplots(nrows=2, sharex=True, figsize=(20, 10))
+ax[0].plot(subset["acc_y"].reset_index(drop=True), label="raw data")
+ax[1].plot(subset["acc_y_lowpass"].reset_index(drop=True), label="butterworth filter")
+ax[0].legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), fancybox=True, shadow=True)
+ax[1].legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), fancybox=True, shadow=True)
 
-ax[0].plot(subset.index, subset['acc_y'], label='Original', color='red')
-ax[0].set_title('Original Acceleration Data')
-ax[0].set_xlabel('Index')
-ax[0].set_ylabel('Acceleration (m/s²)')
-ax[0].legend()
-ax[0].grid(True)
 
-ax[1].plot(subset.index, subset['acc_y_lowpass'], label='Lowpass Filtered')
-ax[1].set_title('Lowpass Filtered Acceleration Data')
-ax[1].set_xlabel('Index')
-ax[1].set_ylabel('Acceleration (m/s²)')
-ax[1].legend()
-ax[1].grid(True)
+for col in sensor_col:
+    df_lowpass = LowPass.low_pass_filter(
+        df_lowpass, col, sampling_frq, cutoff_frq, order=5
+    )
+    df_lowpass[col] = df_lowpass[col + "_lowpass"]
+    del df_lowpass[col + "_lowpass"]
 
-fig.tight_layout()
-plt.show()
+# --------------------------------------------------------------
+# Principal component analysis PCA
+# --------------------------------------------------------------
 
-# Apply low-pass filter to all predictor columns
-for col in predictor_cols:
-    df_lowpass = LowPass.low_pass_filter(df_lowpass, col, fs, cutoff, order=5, phase_shift=True)
-    df_lowpass[col] = df_lowpass[col + '_lowpass']  # Replace original with filtered
-    del df_lowpass[col + '_lowpass']
-
-# -----------------------------------------------------
-# Principal Component Analysis (PCA)
-# -----------------------------------------------------
 df_pca = df_lowpass.copy()
 PCA = PrincipalComponentAnalysis()
+pc_values = PCA.determine_pc_explained_variance(df_pca, sensor_col)
+plt.plot(range(1, 7), pc_values)
+df_pca = PCA.apply_pca(df_pca, sensor_col, 3)
+subset = df_pca[df_pca["set"] == 35]
 
-# Determine explained variance for each component
-pc_values = PCA.determine_pc_explained_variance(df_pca, predictor_cols)
-plt.figure(figsize=(10, 10))
-plt.plot(range(1, len(predictor_cols) + 1), pc_values)
-plt.xlabel('Principal Component Number')
-plt.ylabel('Explained Variance Ratio')
-plt.show()
+subset[["pca_1", "pca_2", "pca_3"]].plot()
 
-# Apply PCA and keep 3 principal components
-df_pca = PCA.apply_pca(df_pca, predictor_cols, number_comp=3)
+# --------------------------------------------------------------
+# Sum of squares attributes
+# --------------------------------------------------------------
 
-# -----------------------------------------------------
-# Sum of Squares Features (acc_r, gyr_r)
-# -----------------------------------------------------
-df_squared = df_pca.copy()
-acc_r = df_squared['acc_x']**2 + df_squared['acc_y']**2 + df_squared['acc_z']**2
-gyr_r = df_squared['gyr_x']**2 + df_squared['gyr_y']**2 + df_squared['gyr_z']**2
+# To further exploit the data, the scalar magnitudes r of the accelerometer and gyroscope were calculated.
+# r is the scalar magnitude of the three combined data points: x, y, and z.
+# The advantage of using r versus any particular data direction is that it is impartial to device orientation and can handle dynamic re-orientations.
+# r is calculated by: r_{magnitude} = sqrt{x^2 + y^2 + z^2}
 
-df_squared['acc_r'] = np.sqrt(acc_r)
-df_squared['gyr_r'] = np.sqrt(gyr_r)
+df_squares = df_pca.copy()
 
-subset = df_squared[df_squared['set'] == 14]
-subset[['acc_r', 'gyr_r']].plot(subplots=True, figsize=(20, 10), title='Sum of Squares Attributes')
+acc_r = df_squares["acc_x"] ** 2 + df_squares["acc_y"] ** 2 + df_squares["acc_z"] ** 2
+gyr_r = df_squares["gyr_x"] ** 2 + df_squares["gyr_y"] ** 2 + df_squares["gyr_z"] ** 2
 
-# -----------------------------------------------------
-# Temporal Abstraction (Mean & Std)
-# -----------------------------------------------------
-df_temporal = df_squared.copy()
-NumericalAbs = NumericalAbstraction()
 
-window_size = int(1000 / 200)  # 5 seconds window (step size = 200ms)
-predictor_cols += ['gyr_r', 'acc_r']
+df_squares["acc_r"] = np.sqrt(acc_r)
+df_squares["gyr_r"] = np.sqrt(gyr_r)
 
-# Apply abstraction for each predictor
-for col in predictor_cols:
-    df_temporal = NumericalAbs.abstract_numerical(df_temporal, [col], window_size, 'mean')
-    df_temporal = NumericalAbs.abstract_numerical(df_temporal, [col], window_size, 'std')
 
-# Apply abstraction per set
+df_squares
+subset = df_squares[df_pca["set"] == 18]
+
+subset[["acc_r", "gyr_r"]].plot(subplots=True)
+
+# --------------------------------------------------------------
+# Temporal abstraction
+# --------------------------------------------------------------
+
+# Rolling averages are commonly used to smooth out short-term fluctuations or noise in time-series data and highlight longer-term trends or patterns.
+# They are particularly useful for identifying patterns that might not be immediately apparent in raw data, especially when dealing with data that contains significant variability or noise.
+
+df_temporal = df_squares.copy()
+sensor_col = sensor_col + ["acc_r", "gyr_r"]
+NumAbs = NumericalAbstraction()
+
+# NumAbs.abstract_numerical(df_temporal , sensor_col , window_size=5 ,aggregation_function= 'mean' )
+# we need to make moving average on each set because each set may containing different label (exercise)
+
 df_temporal_list = []
-for s in df_temporal['set'].unique():
-    subset = df_temporal[df_temporal['set'] == s].copy()
-    for col in predictor_cols:
-        df_temporal = NumericalAbs.abstract_numerical(subset, [col], window_size, 'mean')
-        df_temporal = NumericalAbs.abstract_numerical(subset, [col], window_size, 'std')
+for set in df_temporal["set"].unique():
+    subset = df_temporal[df_temporal["set"] == set].copy()
+
+    for col in sensor_col:
+        subset = NumAbs.abstract_numerical(
+            subset, sensor_col, window_size=5, aggregation_function="mean"
+        )
+        subset = NumAbs.abstract_numerical(
+            subset, sensor_col, window_size=5, aggregation_function="std"
+        )
+
     df_temporal_list.append(subset)
+
 
 df_temporal = pd.concat(df_temporal_list)
 
-# -----------------------------------------------------
-# Frequency Abstraction (Fourier Transform)
-# -----------------------------------------------------
-df_freq = df_temporal.copy().reset_index()
-FreqAbs = FourierTransformation()
+subset[["acc_y", "acc_y_temp_mean_ws_5", "acc_y_temp_std_ws_5"]].plot()
+subset[["gyr_y", "gyr_y_temp_mean_ws_5", "gyr_y_temp_std_ws_5"]].plot()
 
-# Example on 'acc_y'
-df_freq = FreqAbs.abstract_frequency(df_freq, ['acc_y'], window_size=int(2800/200), sampling_rate=int(1000/200))
 
-subset = df_freq[df_freq['set'] == 14]
+# --------------------------------------------------------------
+# Frequency features
+# --------------------------------------------------------------
+
+# The idea of a Fourier transformation is that any sequence of measurements we perform can be represented by a combination of sinusoid functionswith different frequencies
+
+# DFT can provide insight into patterns and trends that would not otherwise be visible. Additionally, the DFT can be used to reduce noise, allowing for more accurate models.
+df_frq = df_temporal.copy().reset_index()
+# df_frq
+FreqAbd = FourierTransformation()
+
+sampling_frq = int(1000 / 200)
+window_size = int(2800 / 200)
+FreqAbd.abstract_frequency(df_frq, ["acc_y"], window_size, sampling_frq)
+subset = df_frq[df_frq["set"] == 15]
+subset[["acc_y"]].plot()
+subset.columns
+# Fourier transformation  abstracted the sign into its basic constituent elements
+
 subset[
     [
         "acc_y_max_freq",
         "acc_y_freq_weighted",
         "acc_y_pse",
-        "acc_y_freq_1.429_Hz_ws_14",
-        "acc_y_freq_2.5_Hz_ws_14",
+        "acc_y_freq_0.0_Hz_ws_14",
+        "acc_y_freq_0.357_Hz_ws_14",
+        "acc_y_freq_0.714_Hz_ws_14",
+        "acc_y_freq_1.071_Hz_ws_14",
     ]
 ].plot()
 
-# Apply frequency abstraction for all predictors
 df_freq_list = []
-for s in df_freq['set'].unique():
-    subset = df_freq[df_freq['set'] == s].reset_index(drop=True)
-    subset = FreqAbs.abstract_frequency(subset, predictor_cols, window_size=int(2800/200), sampling_rate=int(1000/200))
+for set in df_frq["set"].unique():
+    print(f"Applying Fourier transformation to set {set}")
+    subset = df_frq[df_frq["set"] == set].reset_index(drop=True).copy()
+
+    subset = FreqAbd.abstract_frequency(subset, sensor_col, window_size, sampling_frq)
+
     df_freq_list.append(subset)
+df_frq = pd.concat(df_freq_list).set_index("epoch (ms)", drop=True)
+df_frq = df_frq.drop("duration", axis=1)
 
-df_freq = pd.concat(df_freq_list).set_index("epoch (ms)", drop=True)
+# --------------------------------------------------------------
+# Dealing with overlapping windows
+# --------------------------------------------------------------
 
-# -----------------------------------------------------
-# Reduce Overlap in Windows
-# -----------------------------------------------------
-df_freq = df_freq.dropna()
-df_freq = df_freq.iloc[::2]  # Keep every second row to avoid overfitting
+# All extra features are based on moving averages, so the value between the different rows are highly correlated #And this could cause overfitting in our model
 
-# -----------------------------------------------------
-# Clustering (KMeans)
-# -----------------------------------------------------
-df_cluster = df_freq.copy()
-cluster_cols = ['acc_y', 'acc_x', 'acc_z']
+# So we need dealing with that: we will take 50% from data by skipping one row in each step
+df_frq
+df_frq = df_frq.dropna()
+df_frq = df_frq.iloc[::2]
 
-# Determine optimal k using Elbow Method
+# --------------------------------------------------------------
+# Clustering
+# --------------------------------------------------------------
+
+from sklearn.cluster import KMeans
+
+df_cluster = df_frq.copy()
+
+cluster_col = ["acc_x", "acc_y", "acc_z"]
 k_values = range(2, 10)
 inertias = []
+
 for k in k_values:
-    subset = df_cluster[cluster_cols]
-    kmeans = KMeans(n_clusters=k, random_state=0)
-    cluster_labels = kmeans.fit_predict(subset)
+
+    subset = df_cluster[cluster_col]
+    kmeans = KMeans(n_clusters=k, n_init=20, random_state=0)
+    label = kmeans.fit_predict(subset)
+
     inertias.append(kmeans.inertia_)
 
-plt.figure(figsize=(10, 5))
-plt.plot(k_values, inertias, marker='o')
-plt.xlabel('Number of Clusters (k)')
-plt.ylabel('Inertia')
-plt.title('Elbow Method for Optimal k')
-plt.xticks(k_values)
-plt.grid(True)
+inertias
+plt.plot(k_values, inertias, "--o")
+# So the 5 or 6 is the optimal number
+
+
+kmeans = KMeans(n_clusters=6, n_init=20, random_state=0)
+subset = df_cluster[cluster_col]
+df_cluster["cluster"] = kmeans.fit_predict(subset)
+df_cluster
+
+import joblib
+
+joblib.dump(kmeans, "../../models/Clustering_model.pkl")
+
+fig = plt.figure(figsize=(15, 15))
+ax = fig.add_subplot(projection="3d")
+for c in df_cluster["cluster"].unique():
+    subset = df_cluster[df_cluster["cluster"] == c]
+    ax.scatter(subset["acc_x"], subset["acc_y"], subset["acc_z"], label=c)
+ax.set_xlabel("X-axis")
+ax.set_ylabel("Y-axis")
+ax.set_zlabel("Z-axis")
+plt.legend()
+plt.show()
+# Plot Labels
+fig = plt.figure(figsize=(15, 15))
+ax = fig.add_subplot(projection="3d")
+for l in df_cluster["label"].unique():
+    subset = df_cluster[df_cluster["label"] == l]
+    ax.scatter(subset["acc_x"], subset["acc_y"], subset["acc_z"], label=l)
+ax.set_xlabel("X-axis")
+ax.set_ylabel("Y-axis")
+ax.set_zlabel("Z-axis")
+plt.legend()
 plt.show()
 
-# Apply KMeans with chosen k
-k = 5
-kmeans = KMeans(n_clusters=k, n_init=20, random_state=0)
-subset = df_cluster[cluster_cols]
-df_cluster['cluster'] = kmeans.fit_predict(subset)
 
-# -----------------------------------------------------
-# 3D Visualization of Clusters
-# -----------------------------------------------------
-fig = plt.figure(figsize=(20, 20))
-ax = fig.add_subplot(111, projection='3d')
-scatter = ax.scatter(
-    df_cluster['acc_x'],
-    df_cluster['acc_y'],
-    df_cluster['acc_z'],
-    c=df_cluster['cluster'],
-    cmap='viridis',
-    s=50
-)
+# --------------------------------------------------------------
+# Export dataset
+# --------------------------------------------------------------
 
-ax.set_xlabel('acc_x')
-ax.set_ylabel('acc_y')
-ax.set_zlabel('acc_z')
-ax.set_title('3D Cluster Visualization')
-legend1 = ax.legend(*scatter.legend_elements(), title="Clusters")
-ax.add_artist(legend1)
-plt.show()
-
-# -----------------------------------------------------
-# 3D Visualization by Labels
-# -----------------------------------------------------
-fig = plt.figure(figsize=(20, 20))
-ax = fig.add_subplot(111, projection='3d')
-for label in df_cluster['label'].unique():
-    subset = df_cluster[df_cluster['label'] == label]
-    ax.scatter(
-        subset['acc_x'],
-        subset['acc_y'],
-        subset['acc_z'],
-        label=label,
-        s=50
-    )
-
-ax.set_xlabel('acc_x')
-ax.set_ylabel('acc_y')  
-ax.set_zlabel('acc_z')
-ax.set_title('3D Cluster Visualization by Label')
-ax.legend()
-plt.show()
-
-# -----------------------------------------------------
-# Save Final Processed Data
-# -----------------------------------------------------
-df_cluster.to_pickle("../../data/interim/03_data_features_extracted.pkl")
+df_cluster.to_pickle("../../data/interim/03_data_features.pkl")
