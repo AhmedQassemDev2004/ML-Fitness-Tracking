@@ -123,7 +123,7 @@ subset[['acc_r', 'gyr_r']].plot(subplots=True, figsize=(20, 10), title='Sum of S
 df_temporal = df_squared.copy()
 NumericalAbs = NumericalAbstraction()
 
-window_size = 1000 / 200  # 5 seconds window (step size = 200ms)
+window_size = int(1000 / 200)  # 5 seconds window (step size = 200ms)
 predictor_cols += ['gyr_r', 'acc_r']
 
 # Apply abstraction for each predictor
@@ -245,7 +245,7 @@ for label in df_cluster['label'].unique():
     )
 
 ax.set_xlabel('acc_x')
-ax.set_ylabel('acc_y')
+ax.set_ylabel('acc_y')  
 ax.set_zlabel('acc_z')
 ax.set_title('3D Cluster Visualization by Label')
 ax.legend()
