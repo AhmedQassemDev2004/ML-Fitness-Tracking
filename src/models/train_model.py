@@ -41,7 +41,7 @@ cluster_feature = ['cluster']
 fearure_set_1 = basic_features
 fearure_set_2 = list(set(basic_features + sqaure_feature + pca_features)) # put into set first to remove any duplicates
 fearure_set_3 = list(set(fearure_set_2 + time_feature ))
-fearure_set_4 = list(set(fearure_set_3 + freq_feature + cluster_feature  ))
+feature_set_4 = list(set(fearure_set_3 + freq_feature + cluster_feature  ))
 
 
 # --------------------------------------------------------------
@@ -95,7 +95,7 @@ possible_feature_sets = [
     fearure_set_1,
     fearure_set_2,
     fearure_set_3,
-    fearure_set_4,
+    feature_set_4,
     selected_features
 ]
 
@@ -141,6 +141,7 @@ for i, f in zip(range(len(possible_feature_sets)), feature_names):
             class_test_y,
             class_train_prob_y,
             class_test_prob_y,
+            _
         ) = learner.random_forest(
             selected_train_X, y_train, selected_test_X, gridsearch=True
         )
@@ -213,7 +214,7 @@ sns.barplot(data= score_df , x = 'model' , y= 'accuracy' , hue='feature_set')
 # Select best model and evaluate results
 # --------------------------------------------------------------
 
-(class_train_y, class_test_y, class_train_prob_y, class_test_prob_y,) = learner.random_forest( X_train[fearure_set_4], y_train, X_test[fearure_set_4], gridsearch=True)
+(class_train_y, class_test_y, class_train_prob_y, class_test_prob_y, rf) = learner.random_forest( X_train[feature_set_4], y_train, X_test[feature_set_4], gridsearch=True)
 
 accuracy_score(y_test ,class_test_y) 
 
@@ -263,13 +264,17 @@ X_test = X_test.drop('participant' ,axis = 1)
 # --------------------------------------------------------------
 
 
-(class_train_y, class_test_y, class_train_prob_y, class_test_prob_y,) = learner.random_forest( X_train[fearure_set_4], y_train, X_test[fearure_set_4], gridsearch=True)
+(class_train_y, class_test_y, class_train_prob_y, class_test_prob_y, rf) = learner.random_forest( X_train[feature_set_4], y_train, X_test[feature_set_4], gridsearch=True)
 
 accuracy_score(y_test ,class_test_y) 
 
 classes =  class_test_prob_y.columns
 
 cm = confusion_matrix(y_test ,class_test_y ,labels=classes)
+
+import pickle
+with open("../../models/final_model.pkl", "wb") as f:
+    pickle.dump(rf, f)
 
 # create confusion matrix for cm
 plt.figure(figsize=(10, 10))
@@ -296,7 +301,7 @@ plt.show()
 
 # --------------------------------------------------------------
 # Try a simpler model with the selected features
-# --------------------------------------------------------------00000000000
+# --------------------------------------------------------------
 
 (class_train_y, class_test_y, class_train_prob_y, class_test_prob_y,) = learner.feedforward_neural_network( X_train[selected_features], y_train, X_test[selected_features], gridsearch=False)
 
