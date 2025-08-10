@@ -263,16 +263,13 @@ X_test = X_test.drop('participant' ,axis = 1)
 # --------------------------------------------------------------
 
 
-(class_train_y, class_test_y, class_train_prob_y, class_test_prob_y, rf) = learner.random_forest( X_train[fearure_set_4], y_train, X_test[fearure_set_4], gridsearch=True)
+(class_train_y, class_test_y, class_train_prob_y, class_test_prob_y,) = learner.random_forest( X_train[fearure_set_4], y_train, X_test[fearure_set_4], gridsearch=True)
 
 accuracy_score(y_test ,class_test_y) 
 
 classes =  class_test_prob_y.columns
 
 cm = confusion_matrix(y_test ,class_test_y ,labels=classes)
-
-import pickle
-pickle.dump(rf, "../../models/best_model_random_forest.pkl")
 
 # create confusion matrix for cm
 plt.figure(figsize=(10, 10))
@@ -299,7 +296,7 @@ plt.show()
 
 # --------------------------------------------------------------
 # Try a simpler model with the selected features
-# --------------------------------------------------------------
+# --------------------------------------------------------------00000000000
 
 (class_train_y, class_test_y, class_train_prob_y, class_test_prob_y,) = learner.feedforward_neural_network( X_train[selected_features], y_train, X_test[selected_features], gridsearch=False)
 
