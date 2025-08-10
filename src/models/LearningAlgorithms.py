@@ -408,6 +408,7 @@ class ClassificationAlgorithms:
         print_model_details=False,
         gridsearch=True,
     ):
+
         if gridsearch:
             tuned_parameters = [
                 {
@@ -425,6 +426,8 @@ class ClassificationAlgorithms:
                 min_samples_leaf=min_samples_leaf,
                 criterion=criterion,
             )
+
+        # Fit the model
 
         rf.fit(train_X, train_y.values.ravel())
 
@@ -450,12 +453,17 @@ class ClassificationAlgorithms:
             ]
             print("Feature importance random forest:")
             for i in range(0, len(rf.feature_importances_)):
-                print(train_X.columns[ordered_indices[i]], " & ", rf.feature_importances_[ordered_indices[i]])
+                print(
+                    train_X.columns[ordered_indices[i]],
+                )
+                print(
+                    " & ",
+                )
+                print(rf.feature_importances_[ordered_indices[i]])
 
         return (
             pred_training_y,
             pred_test_y,
             frame_prob_training_y,
             frame_prob_test_y,
-            rf,  # return model here
         )
