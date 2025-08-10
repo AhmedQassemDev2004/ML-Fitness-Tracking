@@ -466,5 +466,5 @@ class ClassificationAlgorithms:
             pred_test_y,
             frame_prob_training_y,
             frame_prob_test_y,
-            rf
+            rf,
         )
