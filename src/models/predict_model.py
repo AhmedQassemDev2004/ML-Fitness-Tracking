@@ -131,10 +131,12 @@ class FitnessTrackerPredictor:
 
     def predict_activity(self):
         df = self.apply_feature_engineering()
+        # Ensure feature_set is sorted to match model.feature_names_in_
         sorted_features = [f for f in self.model.feature_names_in_ if f in self.feature_set]
         df = df[sorted_features]
         print(len(self.model.feature_names_in_))
         pred = self.model.predict(df)
+        print("Predicted classes:", pred)
         return pd.DataFrame(pred).mode()[0][0]
 
 
