@@ -1,26 +1,48 @@
+import sys
+import os
+import math 
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
 import pandas as pd
-from src.features.remove_outliers import mark_outliers_chauvenet
+import scipy.special
 import numpy as np
-from src.features.build_features import LowPassFilter, PrincipalComponentAnalysis, NumericalAbstraction, FourierTransformation
+from src.features.DataTransformation import LowPassFilter, PrincipalComponentAnalysis
+from src.features.FrequencyAbstraction import FourierTransformation
+from src.features.TemporalAbstraction import NumericalAbstraction
 import joblib
 
+def mark_outliers_chauvenet(dataset, col, C=2):
+    df_copy = dataset.copy()
+    mean = df_copy[col].mean()
+    std = df_copy[col].std()
+    N = len(df_copy)
+    criterion = 1.0 / (C * N)
 
+    deviation = abs(df_copy[col] - mean) / std
+    low = -deviation / math.sqrt(C)
+    high = deviation / math.sqrt(C)
+
+    prob = [1.0 - 0.5 * (scipy.special.erf(high[i]) - scipy.special.erf(low[i])) for i in range(N)]
+    mask = [p < criterion for p in prob]
+    df_copy[col + "_outlier"] = mask
+    return df_copy
 
 class FitnessTrackerPredictor:
-    def __init__(self, acc_path, gyr_path, model_path, cluseter_model_path):
+    def __init__(self, acc_path, gyr_path, model_path, cluster_model_path, feature_set=None):
         self.model_path = model_path
         self.acc_path = acc_path
         self.gyr_path = gyr_path
-        self.cluseter_model_path = cluseter_model_path
-
+        self.cluster_model_path = cluster_model_path
+        self.feature_set = feature_set if feature_set else np.load('models/feature_set_4.npy')
         self.model = joblib.load(model_path)
 
     def read_data(self):
-        acc_df = pd.read_csv(self.acc_path, header=None, names=['acc_x', 'acc_y', 'acc_z'])
-        gyr_df = pd.read_csv(self.gyr_path, header=None, names=['gyr_x', 'gyr_y', 'gyr_z'])
+        gyr_df = pd.read_csv(self.gyr_path)
+        acc_df = pd.read_csv(self.acc_path)
 
         pd.to_datetime(acc_df['epoch (ms)'], unit='ms')
-        pd.to_datetime(acc_df['time (01:00)'])
+        pd.to_datetime(gyr_df['epoch (ms)'], unit='ms')
 
         acc_df.index = pd.to_datetime(acc_df['epoch (ms)'], unit='ms')
         gyr_df.index = pd.to_datetime(gyr_df['epoch (ms)'], unit='ms')
@@ -48,10 +70,10 @@ class FitnessTrackerPredictor:
         return data_resampled
     
 
-    def remove_outliers(self, data):
+    def remove_outliers(self):
         outliers_removed_df = self.read_data()
         for col in outliers_removed_df.columns:
-            dataset = mark_outliers_chauvenet(data, col)
+            dataset = mark_outliers_chauvenet(outliers_removed_df, col)
             dataset.loc[dataset[col + "_outlier"], col] = np.nan
             outliers_removed_df[col] = dataset[col].interpolate()
         return outliers_removed_df
@@ -93,7 +115,7 @@ class FitnessTrackerPredictor:
         sampling_freq_int = int(1000 / 200)
         window_size = int(2800 / 200)
         df = freq_abs.abstract_frequency(df.reset_index(drop=True), agg_cols, window_size, sampling_freq_int)
-        df.set_index("epoch (ms)", inplace=True, drop=True)
+        # df.set_index("epoch (ms)", inplace=True, drop=True)
 
         # Downsampling
         df.dropna(inplace=True)
@@ -106,3 +128,23 @@ class FitnessTrackerPredictor:
         df["cluster"] = pd.Series(cluster_preds).value_counts().idxmax()
 
         return df
+
+    def predict_activity(self):
+        df = self.apply_feature_engineering()
+        sorted_features = [f for f in self.model.feature_names_in_ if f in self.feature_set]
+        df = df[sorted_features]
+        print(len(self.model.feature_names_in_))
+        pred = self.model.predict(df)
+        return pd.DataFrame(pred).mode()[0][0]
+
+
+if __name__ == "__main__":
+    # Example usage
+    predictor = FitnessTrackerPredictor(
+        acc_path="C:\\Users\\ahmed\\Desktop\\ML-Fitness-Tracking\\data\\raw\\MetaMotion\\A-bench-heavy_MetaWear_2019-01-14T14.22.49.165_C42732BE255C_Accelerometer_12.500Hz_1.4.4.csv",
+        gyr_path="C:\\Users\\ahmed\\Desktop\\ML-Fitness-Tracking\\data\\raw\\MetaMotion\\A-bench-heavy_MetaWear_2019-01-14T14.22.49.165_C42732BE255C_Gyroscope_25.000Hz_1.4.4.csv",
+        model_path="models/final_model.pkl",
+        cluster_model_path="models/Clustering_model.pkl"
+    )
+    activity = predictor.predict_activity()
+    print(f"Predicted Activity: {activity}")

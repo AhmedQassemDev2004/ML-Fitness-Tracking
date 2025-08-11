@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import math
 import scipy
 from sklearn.neighbors import LocalOutlierFactor
+import os
 
 # --------------------------------------------------------------
 # Configuration
@@ -13,7 +14,10 @@ plt.style.use("fivethirtyeight")
 plt.rcParams["figure.figsize"] = (20, 5)
 plt.rcParams["figure.dpi"] = 100
 
-DATA_PATH = "../../data/interim/01_data_processed.pkl"
+
+DATA_PATH = os.path.join(os.path.dirname(__file__), "../../data/interim/01_data_processed.pkl")
+DATA_PATH = os.path.abspath(DATA_PATH)
+
 OUTLIER_COLS = ['acc_x', 'acc_y', 'acc_z', 'gyr_x', 'gyr_y', 'gyr_z']
 
 # --------------------------------------------------------------

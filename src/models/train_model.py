@@ -41,7 +41,7 @@ cluster_feature = ['cluster']
 fearure_set_1 = basic_features
 fearure_set_2 = list(set(basic_features + sqaure_feature + pca_features)) # put into set first to remove any duplicates
 fearure_set_3 = list(set(fearure_set_2 + time_feature ))
-feature_set_4 = list(set(fearure_set_3 + freq_feature + cluster_feature  ))
+feature_set_4 = list(set(fearure_set_3 + freq_feature + cluster_feature))
 
 
 # --------------------------------------------------------------
@@ -214,13 +214,19 @@ sns.barplot(data= score_df , x = 'model' , y= 'accuracy' , hue='feature_set')
 # Select best model and evaluate results
 # --------------------------------------------------------------
 
-(class_train_y, class_test_y, class_train_prob_y, class_test_prob_y, rf) = learner.random_forest( X_train[feature_set_4], y_train, X_test[feature_set_4], gridsearch=True)
+(class_train_y, class_test_y, class_train_prob_y, class_test_prob_y, rf) = learner.random_forest( X_train, y_train, X_test, gridsearch=True)
 
 accuracy_score(y_test ,class_test_y) 
 
 classes =  class_test_prob_y.columns
 
 cm = confusion_matrix(y_test ,class_test_y ,labels=classes)
+
+np.save('../../models/feature_set_4.npy', feature_set_4)
+
+# Save the final model
+import pickle
+pickle.dump(rf, open("../../models/final_model.pkl", "wb"))
 
 # create confusion matrix for cm
 plt.figure(figsize=(10, 10))
